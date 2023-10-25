@@ -1,23 +1,25 @@
 
 import whisper
+from tqdm import tqdm
+
 from classes.chatGPT import ChatGPTUtils
 from classes.notion import NotionPage
-from tqdm import tqdm
 from classes.utils import *
+from pathlib import Path
 
 def main():
-    recordings = get_recordings(recordings_folder_path="/mnt/c/Users/maxst/OneDrive/class_recordings")
+    paths = get_paths(Path("/mnt/c/Users/maxst/OneDrive/class_recordings"))
     gpt_utils = ChatGPTUtils()
-    model = whisper.load_model("large")
+    model = whisper.load_model("medium")
     
-    for recording in tqdm(recordings, desc="Processing recordings"):
-        transcription = model.transcribe(recording.audio_path)['text']
-        
-        chunks = get_chunks_from_transcription(transcription.split(". "), max_words=1000) # Also take into account the input prompt and the output
+    for path in tqdm(paths, desc="Processing recordings"):
+        recording = get_recording(path)
+        transcription = model.transcribe(str(recording.audio_path))['text']
+        chunks = get_chunks_from_transcription(str(transcription), max_tokens=2000) # Also take into account the input prompt and the output
         notion_page = NotionPage(recording)
         
         for idx, chunk in tqdm(enumerate(chunks), desc="Processing chunks"):
-            chunk_obj = gpt_utils.get_additional_info(transcription=chunk, language=recording.language)
+            chunk_obj = gpt_utils.get_additional_info(chunk_str=chunk, language=recording.language)
             notion_page.update_page(chunk_obj, idx + 1)
             
         move_to_folder(recording.audio_path, 'processed')

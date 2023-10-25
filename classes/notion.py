@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .recordings import Recording
 from .chunk import Chunk
 import requests
+import re
 
 @dataclass
 class NotionPage():
@@ -10,8 +11,7 @@ class NotionPage():
     DB_ID : str = "7e0e7afa117c42ff8f51a0cc9eaa531d"
     
     def __post_init__(self):
-        self.NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
-        self.headers = {'Authorization': f"Bearer {self.NOTION_API_KEY}", 
+        self.headers = {'Authorization': f"Bearer {os.environ.get('NOTION_API_KEY')}", 
             'Content-Type': 'application/json', 
             'Notion-Version': '2022-06-28'}
         self.page_id = self._create_page("https://api.notion.com/v1/pages")
@@ -70,35 +70,52 @@ class NotionPage():
     def update_page(self, chunk:Chunk, chunk_idx:int) -> None:
         payload = self._create_chunk_payload(chunk, chunk_idx)
         response = requests.patch(self.url_update, json=payload, headers=self.headers)
-        return response.status_code
+        if response.status_code != 200:
+            return
     
     def _create_chunk_payload(self, chunk:Chunk, chunk_idx:int) -> dict:
         blocks = []
         blocks.append(self._contruct_header_obj('heading_1',f"{chunk_idx}. {chunk.title}"))
-        transcription = self._split_text_into_paragraphs(chunk.transcript)
-        blocks.extend(self._construct_text_obj(transcription))
+        transcription_paragraphs = self._split_text_into_paragraphs(chunk.transcript)
+        blocks.extend(self._construct_text_obj(transcription_paragraphs))
         blocks.append(self._contruct_header_obj('heading_2','Summary'))
-        summary = self._split_text_into_paragraphs(chunk.summary)
-        blocks.extend(self._construct_text_obj(summary))
+        summary_paragraphs = self._split_text_into_paragraphs(chunk.summary)
+        blocks.extend(self._construct_text_obj(summary_paragraphs))
         blocks.append(self._contruct_header_obj('heading_2','Main points'))
         blocks.extend(self._construct_list_obj(chunk.main_points))
         blocks.append(self._contruct_header_obj('heading_2','Follow ups'))
         blocks.extend(self._construct_list_obj(chunk.follow_up))
-        """blocks.append(self._contruct_header_obj('heading_2','Stories'))
-        blocks.extend(self._construct_list_obj(chunk.stories))
-        blocks.append(self._contruct_header_obj('heading_2','Arguments'))
-        blocks.extend(self._construct_list_obj(chunk.arguments))"""
         payload = {
             "children": blocks
         }
         return payload
     
-    def _split_text_into_paragraphs(self, text:str, sentences_per_paragraph:int = 6) -> list:
-        splitted = text.split(". ")
-        paragraphs = []
-        for i in range(0, len(splitted), sentences_per_paragraph):
-            paragraphs.append(". ".join(splitted[i:i+sentences_per_paragraph]) + ".")
-        return paragraphs
+    def _split_text_into_paragraphs(self, text:str) -> list[str]:
+        # Split the text into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+
+        # Split any sentence longer than 600 characters into smaller parts
+        for i, sentence in enumerate(sentences):
+            if len(sentence) > 600:
+                parts = re.split(r'(?<=[,])\s+', sentence) # First attempt to split by commas
+                if len(' '.join(parts)) > 600:  # If it's still too long, split on capital letters
+                    parts = re.split(r'(?<=[a-z])\s+(?=[A-Z])', sentence)
+                if len(' '.join(parts)) > 600:  # If it's still too long, split on spaces
+                    parts = sentence.split(' ')
+                    
+                sentences[i:i+1] = parts
+                
+        chunks = []
+        chunk = sentences[0]
+        for sentence in sentences[1:]:
+            if len(chunk) + len(sentence) + 1 > 600:  # +1 for the space between sentences
+                chunks.append(chunk)
+                chunk = sentence
+            else:
+                chunk += ' ' + sentence
+        chunks.append(chunk)  # Don't forget the last chunk
+        
+        return chunks
     
     def _construct_text_obj(self, paragraphs:list) -> list:
         full_text = []
@@ -128,7 +145,7 @@ class NotionPage():
             }
         }
     
-    def _construct_list_obj(self, list_items:list) -> dict:
+    def _construct_list_obj(self, list_items:list) -> list:
         full_list = []
         for item in list_items:
             obj = {

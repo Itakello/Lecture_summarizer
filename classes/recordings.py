@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 class Language(Enum):
     ENGLISH = "en"
-    ITALIAN = "ita"
+    ITALIAN = "it"
 
 class Owner(Enum):
     ITAKELLO = "itakello"
@@ -11,7 +12,7 @@ class Owner(Enum):
 
 @dataclass
 class Recording():
-    audio_path: str
+    audio_path: Path
     name: str
     language: Language
     owner: Owner
