@@ -2,4 +2,3 @@ openai-whisper
 pydub
 openai
 tiktoken
-torch
