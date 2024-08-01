@@ -2,6 +2,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from openai import OpenAI
 
@@ -15,6 +16,7 @@ class ChatGPTUtils:
     client: OpenAI = field(
         default=OpenAI(api_key=os.environ.get("OPENAI_API_KEY")), init=False
     )
+    prompts_path: Path = field(default=Path("prompts"), init=False)
 
     def call_openai_api(self, content: str, prompt: str, retries: int = 0) -> dict:
         MAX_RETRIES = 5
@@ -65,8 +67,8 @@ class ChatGPTUtils:
                     temperature=0.1,
                 )
 
-                return str(response.choices[0]["message"]["content"])
-            except Exception as e:
+                return str(response.choices[0].message.content)
+            except Exception:
                 if retry < max_retries - 1:  # It's not the final retry
                     time.sleep(delay)
                     continue
@@ -77,18 +79,33 @@ class ChatGPTUtils:
         self, transcription: str, language: Language
     ) -> tuple[str, str]:
         if language == Language.ENGLISH:
-            prompt = f'Analyze the transcript of a lesson provided below, which could contain errors especially at the start and end of the text, then provide the following:\nKey "title:" - add a title.\n\nKey "main_points" - add an array of the main points. Limit each item to 100 words, and limit the list to 10 items.\nKey "follow_up:" - add an array of follow-up questions. Limit each item to 100 words, and limit the list to 5 items.\nKey "summary" - create a really detailed in-depth summary of at least 250 words.\n\nEnsure that the final element of any array within the JSON object is not followed by a comma.\nTranscript:\n{transcription}'
-            content = 'You are an assistant that only speaks JSON. Do not write normal text.\nExample formatting:\n{\n"title": "Notion Buttons",\n"main_points": [\n"item 1",\n"item 2",\n"item 3"\n],\n"follow_up": [\n"item 1",\n"item 2",\n"item 3"\n],,\n"summary": "A detailed description of buttons for Notion"}'
+            prompt_filename = "prompt_english.txt"
+            content_filename = "content_english.txt"
         elif language == Language.ITALIAN:
-            prompt = f'Analizza la trascrizione sottostante di una lezione, la quale potrebbe contenere errori specialmente all\' inizio e fine del testo, e produci i seguenti:\nChiave "title:" - aggiungi un titolo.\n\nChiave "main_points" - aggiungi un array di punti principali. Limita ogni elemento a 100 parole, e limita il numero di elementi a 10.\nChiave "follow_up:" - aggiungi un array di domande aggiuntive. Limita ogni elemento a 100 parole, e limita il numero di elementi a 5.\nChiave "summary" - crea un riassunto molto dettagliato di almeno 250 parole.\n\nAssicurati che l\' elemento final di ogni array all\' interno dell\' oggett JSON non sia seguito da un virgola.\nTrascrizione:\n{transcription}'
-            content = 'Tu sei un assistente che parla solamente in JSON. Non scrivere testo normale.\nEsempio di formattazione:\n{\n"title": "I bottoni della giacca",\n"main_points": [\n"elemento 1",\n"elemento 2",\n"elemento 3"\n],\n"follow_up": [\n"elemento 1",\n"elemento 2",\n"elemento 3"\n],\n"summary": "Una descrizione dettagliata dei bottoni della giacca"}'
+            prompt_filename = "prompt_italian.txt"
+            content_filename = "content_italian.txt"
         else:
-            raise NotImplementedError("Language not supported")
+            raise ValueError("Unsupported language")
+
+        prompt = self.read_prompt_from_file(prompt_filename).format(
+            transcription=transcription
+        )
+        content = self.read_prompt_from_file(content_filename)
         return content, prompt
 
     def _create_content_and_prompt_json_error(
-        self, json: str, error: str
+        self, json_content: str, error: str
     ) -> tuple[str, str]:
-        prompt = f"You have an error in the JSON formatting. Please fix it and print it out.\nError: {error}\nJSON: {json}"
-        content = 'You are an assistant that only speaks JSON. Do not write normal text.\nExample formatting:\n{\n"title": "Notion Buttons",\n"main_points": [\n"item 1",\n"item 2",\n"item 3"\n],\n"follow_up": [\n"item 1",\n"item 2",\n"item 3"\n],\n"summary": "A detailed description of buttons for Notion"}'
+        prompt_filename = "prompt_json_error.txt"
+        content_filename = "content_english.txt"
+
+        prompt = self.read_prompt_from_file(prompt_filename).format(
+            error=error, json=json_content
+        )
+        content = self.read_prompt_from_file(content_filename)
         return content, prompt
+
+    def read_prompt_from_file(self, filename: str) -> str:
+        file_path = self.prompts_path / filename
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.read()

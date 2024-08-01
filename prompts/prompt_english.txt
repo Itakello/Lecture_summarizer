@@ -1,0 +1,9 @@
+Analyze the transcript of a lesson provided below, which could contain errors especially at the start and end of the text, then provide the following:
+Key "title:" - add a title.
+Key "main_points" - add an array of the main points. Limit each item to 100 words, and limit the list to 10 items.
+Key "follow_up:" - add an array of follow-up questions. Limit each item to 100 words, and limit the list to 5 items.
+Key "summary" - create a really detailed in-depth summary of at least 250 words.
+
+Ensure that the final element of any array within the JSON object is not followed by a comma.
+Transcript:
+{transcription}

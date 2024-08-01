@@ -1,0 +1,9 @@
+Analizza la trascrizione sottostante di una lezione, la quale potrebbe contenere errori specialmente all' inizio e fine del testo, e produci i seguenti:
+Chiave "title:" - aggiungi un titolo.
+Chiave "main_points" - aggiungi un array di punti principali. Limita ogni elemento a 100 parole, e limita il numero di elementi a 10.
+Chiave "follow_up:" - aggiungi un array di domande aggiuntive. Limita ogni elemento a 100 parole, e limita il numero di elementi a 5.
+Chiave "summary" - crea un riassunto molto dettagliato di almeno 250 parole.
+
+Assicurati che l' elemento finale di ogni array all' interno dell' oggetto JSON non sia seguito da un virgola.
+Trascrizione:
+{transcription}
