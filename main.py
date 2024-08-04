@@ -15,7 +15,7 @@ from classes.utils import (
 
 def main() -> None:
     paths = get_paths(Path("/mnt/c/Users/maxst/OneDrive/class_recordings"))
-    gpt_utils = ChatGPTUtils(model="gpt-3.5-turbo")
+    gpt_utils = ChatGPTUtils(model="gpt-4o-mini")
     model = whisper.load_model("medium")
 
     for path in tqdm(paths, desc="Processing recordings"):
