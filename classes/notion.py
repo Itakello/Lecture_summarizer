@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from .recordings import Recording
 from .chunk import Chunk
 import requests
@@ -8,20 +8,35 @@ import re
 @dataclass
 class NotionPage():
     recording: Recording
-    DB_ID : str = "7e0e7afa117c42ff8f51a0cc9eaa531d"
-    
+    DB_ID : str = field(init=False)
+
     def __post_init__(self):
-        self.headers = {'Authorization': f"Bearer {os.environ.get('NOTION_API_KEY')}", 
-            'Content-Type': 'application/json', 
-            'Notion-Version': '2022-06-28'}
+        # Load database ID and API key from environment
+        self.DB_ID = os.environ.get("NOTION_DB_ID")
+        notion_api_key = os.environ.get("NOTION_API_KEY")
+
+        if not notion_api_key:
+            raise EnvironmentError(
+                "NOTION_API_KEY is not set. Please configure it in your .env file."
+            )
+        if not self.DB_ID:
+            raise EnvironmentError(
+                "NOTION_DB_ID is not set. Please configure it in your .env file."
+            )
+
+        self.headers = {
+            "Authorization": f"Bearer {notion_api_key}",
+            "Content-Type": "application/json",
+            "Notion-Version": "2022-06-28",
+        }
         self.page_id = self._create_page("https://api.notion.com/v1/pages")
         self.url_update = f"https://api.notion.com/v1/blocks/{self.page_id}/children"
-    
+
     def _create_page(self, url:str) -> None:
         payload = self._create_initial_payload()
         response = requests.post(url, json=payload, headers=self.headers)
         return response.json()['id']
-    
+
     def _create_initial_payload(self) -> dict:
         payload = {
             "parent": {
@@ -66,13 +81,13 @@ class NotionPage():
             ]
         }
         return payload
-    
+
     def update_page(self, chunk:Chunk, chunk_idx:int) -> None:
         payload = self._create_chunk_payload(chunk, chunk_idx)
         response = requests.patch(self.url_update, json=payload, headers=self.headers)
         if response.status_code != 200:
             return
-    
+
     def _create_chunk_payload(self, chunk:Chunk, chunk_idx:int) -> dict:
         blocks = []
         blocks.append(self._contruct_header_obj('heading_1',f"{chunk_idx}. {chunk.title}"))
@@ -89,7 +104,7 @@ class NotionPage():
             "children": blocks
         }
         return payload
-    
+
     def _split_text_into_paragraphs(self, text:str) -> list[str]:
         # Split the text into sentences
         sentences = re.split(r'(?<=[.!?])\s+', text)
@@ -116,7 +131,7 @@ class NotionPage():
         chunks.append(chunk)  # Don't forget the last chunk
         
         return chunks
-    
+
     def _construct_text_obj(self, paragraphs:list) -> list:
         full_text = []
         for paragraph in paragraphs:
@@ -131,7 +146,7 @@ class NotionPage():
             } 
             full_text.append(obj)
         return full_text
-    
+
     def _contruct_header_obj(self, header_type:str, header:str) -> dict:
         return {
             header_type: {
@@ -144,7 +159,7 @@ class NotionPage():
                 ]
             }
         }
-    
+
     def _construct_list_obj(self, list_items:list) -> list:
         full_list = []
         for item in list_items:

@@ -2,3 +2,4 @@ openai-whisper
 pydub
 openai
 tiktoken
+python-dotenv

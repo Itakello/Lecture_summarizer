@@ -1,3 +1,66 @@
+# Lecture Summarizer
+
+A lightweight pipeline that transcribes lecture audio, summarizes it with OpenAI, and publishes nicely-formatted pages to Notion.
+
+## Quick Start
+
+1. **Clone & install**
+   ```bash
+   git clone https://github.com/your-org/lecture_summarizer.git
+   cd lecture_summarizer
+   pip install -r requirements.txt
+   ```
+2. **Configure**
+   ```bash
+   cp .env.example .env   # then edit .env with your keys
+   ```
+3. **Prepare recordings**  
+   Create a `recordings/` folder at repo root. Inside, add sub-folders named `<subject>_<owner>` (e.g. `Physics_itakello`). Drop your `.mp3`/`.m4a` files there.
+4. **Run**
+   ```bash
+   python main.py
+   ```
+
+---
+
+## Configuration (`.env`)
+
+| Variable          | Description                                        |
+|-------------------|----------------------------------------------------|
+| `NOTION_API_KEY`  | Secret from your Notion integration                |
+| `NOTION_DB_ID`    | Target database ID (32-char UUID w/o dashes)       |
+| `OPENAI_API_KEY`  | Your OpenAI key                                    |
+| `LANGUAGE`        | `ENG` or `ITA` – language of the recordings        |
+| `OPENAI_MODEL`    | Model to use (`gpt-4o-mini`, `gpt-4o`, etc.)       |
+
+The app validates `LANGUAGE` and `OPENAI_MODEL` at startup and will abort with a clear error if anything is missing.
+
+---
+
+## Notion Integration Setup
+
+1. Go to **Settings & Members → Integrations → Develop your own integration** and click **+ New integration**.
+2. Save the generated **Internal Integration Token** → this is your `NOTION_API_KEY`.
+3. Open the database you want to use, click **Share**, add your integration and give it *edit* permissions.
+4. Copy the database’s URL and extract the 32-char ID (the part after the last slash, before the `?`). Use that as `NOTION_DB_ID`.
+
+---
+
+## Pipeline Overview
+
+1. **Discovery** – `utils.get_paths()` scans `recordings/` for audio files.
+2. **Transcription** – Whisper (`medium` model by default) converts audio to text.
+3. **Chunking** – Long transcriptions are split into ~2k-token chunks.
+4. **Enrichment** – `ChatGPTUtils` calls OpenAI with language-specific prompts to obtain title, summary, main points, follow-ups.
+5. **Publishing** – `NotionPage` builds / updates a page in your target DB for each chunk.
+6. **Archiving** – Processed audio is moved into a `processed/` sub-folder alongside the original file.
+
+---
+
+*Sections below describe the original GPU / WSL2 setup and are kept for reference.*
+
+---
+
 # Lecture Summarizer Environment Setup Guide
 
 This guide outlines the steps required to set up the environment for running the Lecture Summarizer project on a system with an NVIDIA GPU, using Windows Subsystem for Linux (WSL2), and Conda.

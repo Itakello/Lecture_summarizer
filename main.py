@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 
 import whisper
+from dotenv import load_dotenv
 from tqdm import tqdm
 
 from classes.chatGPT import ChatGPTUtils
@@ -13,9 +15,36 @@ from classes.utils import (
 )
 
 
+def _validate_env() -> tuple[str, str]:
+    """Validate required environment variables and return language and model."""
+    language = os.environ.get("LANGUAGE")
+    model = os.environ.get("OPENAI_MODEL")
+
+    if language not in {"ENG", "ITA"}:
+        raise EnvironmentError(
+            "LANGUAGE must be set to 'ENG' or 'ITA' in your .env file."
+        )
+    if not model:
+        raise EnvironmentError(
+            "OPENAI_MODEL is not set in your .env file."
+        )
+    return language, model
+
+
 def main() -> None:
-    paths = get_paths(Path("/mnt/c/Users/maxst/OneDrive/class_recordings"))
-    gpt_utils = ChatGPTUtils(model="gpt-4o-mini")
+    # Load .env if present
+    load_dotenv()
+
+    _, model = _validate_env()
+
+    recordings_root = Path("recordings")
+    if not recordings_root.exists():
+        raise FileNotFoundError(
+            "'recordings' folder not found. Create it and add your audio subfolders."
+        )
+
+    paths = get_paths(recordings_root)
+    gpt_utils = ChatGPTUtils(model=model)
     model = whisper.load_model("medium")
 
     for path in tqdm(paths, desc="Processing recordings"):
