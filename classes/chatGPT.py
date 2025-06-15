@@ -1,10 +1,11 @@
 import json
-import os
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from openai import OpenAI
+
+import config
 
 from .chunk import Chunk
 from .recordings import Language
@@ -13,38 +14,82 @@ from .recordings import Language
 @dataclass
 class ChatGPTUtils:
     model: str
-    client: OpenAI = field(
-        default=OpenAI(api_key=os.environ.get("OPENAI_API_KEY")), init=False
-    )
+    client: OpenAI = field(default=OpenAI(api_key=config.OPENAI_API_KEY), init=False)
     prompts_path: Path = field(default=Path("prompts"), init=False)
 
-    def call_openai_api(self, content: str, prompt: str, retries: int = 0) -> dict:
-        MAX_RETRIES = 5
-        if retries > MAX_RETRIES:
-            raise Exception("Reached maximum number of retries.")
-        try:
-            retries += 1
-            response = self._invoke_prompt(content, prompt)
-            parsed_res = json.loads(response)
-        except json.decoder.JSONDecodeError as je:
-            print(je)
-            time.sleep(10)
-            je_content, je_propmpt = self._create_content_and_prompt_json_error(
-                response, je
+    # ------------------------------------------------------------------
+    #  Constants & helpers
+    # ------------------------------------------------------------------
+    SCHEMA: dict[str, Any] = field(
+        default_factory=lambda: {
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "main_points": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "follow_up": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+        init=False,
+        repr=False,
+    )
+
+    temperature: float = field(default=config.TEMPERATURE, init=False)
+
+    # ------------------------------------------------------------------
+    #  Public API
+    # ------------------------------------------------------------------
+
+    def _get_structured_response(
+        self,
+        sys_prompt: str | None,
+        user_prompt: str | None,
+        use_web_search: bool = False,
+    ) -> dict[str, Any]:
+        """Wrapper around OpenAI Responses API returning structured JSON."""
+        from openai.types.beta.responses import (
+            ResponseTextConfigParam,
+        )  # type: ignore
+
+        # Build messages list
+        messages = []
+        if sys_prompt:
+            messages.append({"role": "system", "content": sys_prompt})
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+        if not messages:
+            raise ValueError(
+                "At least one of sys_prompt or user_prompt must be provided"
             )
-            response = self._invoke_prompt(je_content, je_propmpt)
-            parsed_res = json.loads(response)
-        except Exception as e:
-            print(e)
-            time.sleep(10)
-            parsed_res = self.call_openai_api(content, prompt, retries)
-        return parsed_res
+
+        text_config: ResponseTextConfigParam = {
+            "format": {
+                "type": "json_schema",
+                "name": "structured_response",
+                "strict": True,
+                "schema": self.SCHEMA,
+            }
+        }
+
+        response = self.client.responses.create(
+            input=messages,
+            model=self.model,
+            text=text_config,
+            temperature=self.temperature,
+        )
+
+        if response.error:
+            raise ValueError(f"API Error: {response.error.message}")
+
+        return json.loads(response.output_text) if response.output_text else {}
 
     def get_additional_info(self, chunk_str: str, language: Language) -> Chunk:
         content, prompt = self._create_content_and_prompt(chunk_str, language)
-        parsed_res = self.call_openai_api(content, prompt)
-        chunk = self._create_chunk(chunk_str, parsed_res)
-        return chunk
+        parsed_res = self._get_structured_response(content, prompt)
+        return self._create_chunk(chunk_str, parsed_res)
 
     def _create_chunk(self, transcription: str, parsed_res: dict) -> Chunk:
         return Chunk(
@@ -55,42 +100,16 @@ class ChatGPTUtils:
             parsed_res["follow_up"],
         )
 
-    def _invoke_prompt(self, content: str, prompt: str, max_retries=3, delay=10) -> str:
-        for retry in range(max_retries):
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": content},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.1,
-                )
-
-                return str(response.choices[0].message.content)
-            except Exception:
-                if retry < max_retries - 1:  # It's not the final retry
-                    time.sleep(delay)
-                    continue
-                else:
-                    raise ConnectionError
-
     def _create_content_and_prompt(
         self, transcription: str, language: Language
     ) -> tuple[str, str]:
-        if language == Language.ENGLISH:
-            prompt_filename = "prompt_english.txt"
-            content_filename = "content_english.txt"
-        elif language == Language.ITALIAN:
-            prompt_filename = "prompt_italian.txt"
-            content_filename = "content_italian.txt"
-        else:
-            raise ValueError("Unsupported language")
+        # Read single English prompt file which contains placeholders.
+        prompt_template = self.read_prompt_from_file("prompt_english.txt")
+        content = self.read_prompt_from_file("content_english.txt")
 
-        prompt = self.read_prompt_from_file(prompt_filename).format(
-            transcription=transcription
+        prompt = prompt_template.format(
+            transcription=transcription, output_language=config.output_language()
         )
-        content = self.read_prompt_from_file(content_filename)
         return content, prompt
 
     def _create_content_and_prompt_json_error(

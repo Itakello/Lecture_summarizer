@@ -5,33 +5,46 @@ from pathlib import Path
 import tiktoken
 from pydub import AudioSegment
 
-from .recordings import Language, Owner, Recording
+import config
+
+from .recordings import Language, Recording
 
 
-def get_folder_meta(path: str) -> tuple[Language, Owner]:
+def get_folder_meta(path: str) -> tuple[Language, str]:
     chunks = path.split("_")
     assert len(chunks) == 2
     owner = chunks[0].lower()
     language = chunks[1].lower()
-    return Language(language), Owner(owner)
+    return Language(language), owner
 
 
 # return the list of audio paths in each recording subfolder of each personal folder
 def get_paths(recordings_folder_path: Path) -> list[Path]:
-    paths = list()
-    for folder in recordings_folder_path.iterdir():
-        for subfolder in folder.iterdir():
-            for file in subfolder.iterdir():
-                if file.suffix == ".mp3" or file.suffix == ".m4a":
-                    paths.append(file)
-    return paths
+    """Return a list of paths to every audio file in *recordings_folder_path*.
+
+    The new folder structure contains only subject folders, so we no longer
+    assume a fixed depth.  We therefore search recursively for files with the
+    desired audio extensions.
+    """
+    audio_extensions = {".mp3", ".m4a"}
+    return [
+        p for p in recordings_folder_path.rglob("*") if p.suffix in audio_extensions
+    ]
 
 
 def get_recording(file_path: Path) -> Recording:
     audio = AudioSegment.from_file(file_path)
     duration = int(len(audio) / 1000)
     subject_folder = file_path.parent.name
-    language, owner = get_folder_meta(file_path.parent.parent.name)
+    # Retrieve language and owner from the environment instead of the path
+    # Map language based on validated config
+    if config.LANGUAGE == "ENG":
+        language = Language.ENGLISH
+    else:
+        language = Language.ITALIAN
+
+    owner = config.OWNER or "unknown"
+
     return Recording(
         file_path, file_path.stem, language, owner, duration, subject_folder
     )
