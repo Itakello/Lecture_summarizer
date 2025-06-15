@@ -4,11 +4,21 @@ from .recordings import Recording
 from .chunk import Chunk
 import requests
 import re
+from typing import Dict, Tuple
 
 @dataclass
 class NotionPage():
     recording: Recording
     DB_ID : str = field(init=False)
+    
+    # Define the expected database schema once so it can be reused by the
+    # verification & fix helpers.
+    REQUIRED_PROPERTIES: Dict[str, str] = field(default_factory=lambda: {
+        "Title": "title",
+        "Duration (seconds)": "number",
+        "Subject": "select",
+        "Who": "select",
+    }, init=False, repr=False)
 
     def __post_init__(self):
         # Load database ID and API key from environment
@@ -174,3 +184,63 @@ class NotionPage():
             }
             full_list.append(obj)
         return full_list
+
+    # ------------------------------------------------------------------
+    #  New methods: DB schema verification & automatic fixing
+    # ------------------------------------------------------------------
+    def verify_db_schema(self) -> Tuple[bool, Dict[str, str]]:
+        """Check that the Notion database contains all required properties.
+
+        Returns
+        -------
+        Tuple[bool, Dict[str, str]]
+            * bool – True if the schema is correct, False otherwise.
+            * dict – Mapping of property names to an error message (missing or wrong type).
+        """
+        url = f"https://api.notion.com/v1/databases/{self.DB_ID}"
+        resp = requests.get(url, headers=self.headers)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to fetch Notion DB schema: {resp.status_code} - {resp.text}")
+
+        db_props = resp.json().get("properties", {})
+        errors: Dict[str, str] = {}
+        for name, expected_type in self.REQUIRED_PROPERTIES.items():
+            if name not in db_props:
+                errors[name] = "missing"
+            else:
+                actual_type = db_props[name].get("type")
+                if actual_type != expected_type:
+                    errors[name] = f"wrong type (expected '{expected_type}', got '{actual_type}')"
+        return (len(errors) == 0, errors)
+
+    def fix_db_schema(self) -> None:
+        """Add or update database properties to match REQUIRED_PROPERTIES.
+
+        If `verify_db_schema` reports issues, this method will PATCH the
+        database, adding missing columns or updating incorrect ones to the
+        correct type.
+        """
+        is_ok, errors = self.verify_db_schema()
+        if is_ok:
+            return  # Nothing to fix
+
+        update_payload: Dict[str, Dict] = {"properties": {}}
+        for name in errors.keys():
+            correct_type = self.REQUIRED_PROPERTIES[name]
+            update_payload["properties"][name] = self._build_property_definition(correct_type)
+
+        url = f"https://api.notion.com/v1/databases/{self.DB_ID}"
+        resp = requests.patch(url, json=update_payload, headers=self.headers)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to update Notion DB schema: {resp.status_code} - {resp.text}")
+
+    # ---------------------  helpers  ----------------------------------
+    def _build_property_definition(self, prop_type: str) -> Dict:
+        """Return a Notion property definition JSON fragment for the given type."""
+        if prop_type == "title":
+            return {"title": {}}
+        if prop_type == "number":
+            return {"number": {"format": "number"}}
+        if prop_type == "select":
+            return {"select": {}}
+        raise ValueError(f"Unsupported property type: {prop_type}")

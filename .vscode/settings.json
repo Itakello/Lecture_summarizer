@@ -1,7 +1,15 @@
 {
   "[python]": {
-    "editor.defaultFormatter": "ms-python.black-formatter"
+    "editor.defaultFormatter": "charliermarsh.ruff"
   },
-  "python.formatting.provider": "none",
-  "python.languageServer": "None"
+  "python.languageServer": "None",
+  "python.defaultInterpreterPath": "/opt/homebrew/Caskroom/miniconda/base/envs/lacture_summarizer/bin/python",
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda",
+  "python-envs.pythonProjects": [],
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.ruff": true,
+    "source.organizeImports.ruff": true
+  }
 }
