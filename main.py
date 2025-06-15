@@ -25,9 +25,7 @@ def _validate_env() -> tuple[str, str]:
             "LANGUAGE must be set to 'ENG' or 'ITA' in your .env file."
         )
     if not model:
-        raise EnvironmentError(
-            "OPENAI_MODEL is not set in your .env file."
-        )
+        raise EnvironmentError("OPENAI_MODEL is not set in your .env file.")
     return language, model
 
 
