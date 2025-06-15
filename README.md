@@ -35,8 +35,6 @@ A lightweight pipeline that transcribes lecture audio, summarizes it with OpenAI
 
 The app validates `LANGUAGE` and `OPENAI_MODEL` at startup and will abort with a clear error if anything is missing.
 
----
-
 ## Notion Integration Setup
 
 1. Go to **Settings & Members → Integrations → Develop your own integration** and click **+ New integration**.
@@ -46,131 +44,17 @@ The app validates `LANGUAGE` and `OPENAI_MODEL` at startup and will abort with a
 
 ---
 
-## Pipeline Overview
+## How the Pipeline Works
 
-1. **Discovery** – `utils.get_paths()` scans `recordings/` for audio files.
-2. **Transcription** – Whisper (`medium` model by default) converts audio to text.
-3. **Chunking** – Long transcriptions are split into ~2k-token chunks.
-4. **Enrichment** – `ChatGPTUtils` calls OpenAI with language-specific prompts to obtain title, summary, main points, follow-ups.
-5. **Publishing** – `NotionPage` builds / updates a page in your target DB for each chunk.
-6. **Archiving** – Processed audio is moved into a `processed/` sub-folder alongside the original file.
+Below is a high-level walk-through of what happens when you run `python main.py`:
 
----
-
-*Sections below describe the original GPU / WSL2 setup and are kept for reference.*
-
----
-
-# Lecture Summarizer Environment Setup Guide
-
-This guide outlines the steps required to set up the environment for running the Lecture Summarizer project on a system with an NVIDIA GPU, using Windows Subsystem for Linux (WSL2), and Conda.
-
-## Table of Contents
-1. [CUDA Toolkit Installation](#cuda-toolkit-installation)
-2. [Environment Variables Configuration](#environment-variables-configuration)
-3. [Conda Environment Creation](#conda-environment-creation)
-4. [Verifying Installation](#verifying-installation)
-5. [Troubleshooting](#troubleshooting)
-
-## CUDA Toolkit Installation
-
-1. Follow the NVIDIA guide for [installing CUDA on WSL2](https://docs.nvidia.com/cuda/wsl-user-guide/index.html).
-
-## Environment Variables Configuration
-
-1. Temporarily add the CUDA Toolkit's bin directory to the PATH for the current session:
-    ```bash
-    export PATH=/usr/local/cuda/bin:$PATH
-    ```
-2. Permanently add the CUDA Toolkit's bin directory to the PATH for all future sessions:
-    ```bash
-    echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
-    source ~/.bashrc
-    ```
-
-3. Temporarily set the `LD_LIBRARY_PATH` environment variable to let torch and use the GPU:
-    ```bash
-    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-    ```
-
-4. Permanently set the `LD_LIBRARY_PATH` environment variable to let torch and use the GPU:
-    ```bash
-    echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
-    source ~/.bashrc
-    ```
-
-## Conda Environment Creation
-
-1. Create a new Conda environment specifying the desired Python version (e.g., 3.11.5):
-    ```bash
-    conda create -n lecture_summarizer python=3.11.5
-    conda activate lecture_summarizer
-    ```
-
-2. After the CUDA Toolkit installation, install the necessary libraries within the Conda environment:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-## Verifying Installation
-
-1. Verify the CUDA Toolkit installation:
-    ```bash
-    nvcc --version
-    ```
-
-## Troubleshooting
-
-1. **libcuda.so Error**: If you encounter a `libcuda.so: cannot open shared object file: No such file or directory` error:
-    - Locate `libcuda.so`:
-        ```bash
-        sudo find /usr -name libcuda.so
-        ```
-    - Update `LD_LIBRARY_PATH`:
-        ```bash
-        export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
-        ```
-    - Make the change permanent:
-        ```bash
-        echo 'export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-        source ~/.bashrc
-        ```
-
-2. **libcuda.so Accessibility**: Verify that `libcuda.so` is accessible:
-    ```bash
-    ldconfig -p | grep libcuda.so
-    ```
-
-# Setting Up API Keys
-
-## Notion API Key
-
-1. Obtain your Notion API key from your [Notion account](https://www.notion.so/my-integrations) settings under the Integrations section.
-2. Temporarily set the `NOTION_API_KEY` environment variable for the current session:
-    ```bash
-    export NOTION_API_KEY=your_notion_api_key_here
-    ```
-3. Permanently set the `NOTION_API_KEY` environment variable for all future sessions:
-    ```bash
-    echo 'export NOTION_API_KEY=your_notion_api_key_here' >> ~/.bashrc
-    source ~/.bashrc
-    ```
-
-## OpenAI API Key
-
-1. Obtain your OpenAI API key from your [OpenAI account](https://platform.openai.com/account/api-keys) settings.
-2. Temporarily set the `OPENAI_API_KEY` environment variable for the current session:
-    ```bash
-    export OPENAI_API_KEY=your_openai_api_key_here
-    ```
-3. Permanently set the `OPENAI_API_KEY` environment variable for all future sessions:
-    ```bash
-    echo 'export OPENAI_API_KEY=your_openai_api_key_here' >> ~/.bashrc
-    source ~/.bashrc
-    ```
-
-Now your environment is fully set up to run the Lecture Summarizer program.
-
----
-
-This addition to your guide provides a clear and straightforward method for setting up the necessary API keys for your program.
+1. **Discovery** – `utils.get_paths()` scans the `recordings/` directory for audio files and groups them by subject/owner.
+2. **Transcribe (Whisper)** – The recording is fed into OpenAI’s Whisper model (medium by default) which returns raw text.
+3. **Chunking** – The transcription is split into ~2k-token segments (taking prompt & response tokens into account) via `utils.get_chunks_from_transcription()` so each chunk comfortably fits within the context window.
+4. **Enrichment with OpenAI** – For every chunk, `ChatGPTUtils` crafts a language-specific prompt and calls the Chat Completions API to obtain a JSON payload with:
+   * `title`
+   * `summary`
+   * `main_points`
+   * `follow_up` questions
+5. **Publish to Notion** – A `NotionPage` instance converts the structured data into rich blocks and upserts them into your target database page (creating it on first run, updating it on subsequent runs).
+6. **Archive** – After a successful run the source audio file is moved to a `processed/` sub-folder next to the original for safe keeping.
